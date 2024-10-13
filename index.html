@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>DCU Timetable</title>
+<meta name="viewport" content="width=device-width, initial-scale = 1.0, maximum-scale=1.0, user-scalable=no" />
+<meta charset="utf-8">
+<!--
+Copyright (c) 2024 Michael J. Walsh
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+-->
+<style>
+body {
+    margin: 0;
+    padding: 0;
+    font-family: system-ui;
+    font-size: 1rem;
+    font-weight: 400;
+
+    /* this disables the default swipe down action */
+    overscroll-behavior: contain;
+}
+
+table {
+    border-collapse: collapse;
+}
+
+h1 {
+    font-size: calc(1.375rem + 1.5vw);
+}
+
+h2 {
+    font-size: calc(1.325rem + .9vw);
+}
+
+h3 {
+    font-size: calc(1.3rem + .6vw);
+}
+
+h4 {
+    font-size: calc(1.275rem + .3vw);
+}
+
+h1, h2, h3, h4 {
+    margin-top: 0;
+    margin-bottom: .5rem;
+    font-weight: 500;
+    line-height: 1.2;
+}
+
+label {
+    display: block;
+    font-size: 0.75em;
+}
+
+.box table {
+    width: 100%;
+}
+
+#footer {
+    padding-top: 10px;
+    padding-bottom: 10px;
+}
+
+.square-button {
+    width: 2em;
+    height: 2em;
+    margin-top: 10px;
+    vertical-align: top;
+}
+
+.box tr td:nth-child(1) {
+    text-align: left;
+}
+.box tr td:nth-child(2) {
+    text-align: right;
+}
+
+.box li {
+    text-align: left;
+}
+
+#updated {
+    font-size: smaller;
+    font-style: italic;
+    width: 100%;
+    text-align: center;
+}
+
+#timetable {
+    width: 100%;
+}
+#timetable td {
+    border-bottom: solid 1px black;
+    padding: 10px;
+}
+
+#timetable tr td:nth-child(1) {
+    text-align: left;
+}
+#timetable tr td:nth-child(2) {
+    text-align: right;
+}
+
+.time td {
+    vertical-align: bottom;
+}
+
+.time h3, .time i {
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+#heading {
+    width: 100%;
+}
+
+.box {
+    padding: 10px;
+    border: 1px solid black;
+    margin-bottom: 20px;
+}
+
+.box p {
+    text-align: left;
+}
+
+@media only screen and (max-width: 600px) {
+    .box {
+        margin: 7vw;
+    }
+}
+
+@media only screen and (min-width: 600px) {
+    .box {
+        margin: 50px auto 50px auto;
+        max-width: 500px;
+    }
+}
+
+#search-box {
+    padding: 0;
+    text-align: left;
+}
+
+@media only screen and (max-width: 600px) {
+    #search-box {
+        margin: 7vw;
+    }
+}
+
+@media only screen and (min-width: 600px) {
+    #search-box {
+        margin: 50px auto 50px auto;
+        max-width: 520px;
+    }
+}
+
+#loading {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+}
+
+#edit-timetable {
+    margin-top: 3%;
+    text-align: center;
+}
+
+#footer {
+    text-align: center;
+}
+#footer input {
+    margin-bottom: 10px;
+}
+
+.disabled {
+    pointer-events: none;
+    touch-action: none;
+}
+
+/* stolen from bootstrap */
+@keyframes spinner-border {
+  to { transform: rotate(360deg); }
+}
+
+.spinner-border {
+    display: inline-block;
+    width: 2rem;
+    height: 2rem;
+    vertical-align: text-bottom;
+    border: .25em solid black;
+    border-right-color: black;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: spinner-border .75s linear infinite;
+}
+
+</style>
+<script>
+
+'use strict';
+
+const SEARCH_TYPES = {
+    p: "241e4d36-60e0-49f8-b27e-99416745d98d",
+    m: "525fe79b-73c3-4b5c-8186-83c652b3adcc",
+    l: "1e042cb1-547d-41d4-ae93-a1f2c3d34538",
+};
+
+let selected_items = [];
+let history = [];
+let viewing_timetable = false;
+let week_offset = 0;
+let end_day = 4; // friday
+let current_week = null;
+let current_timetable_name = "";
+
+const weekDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+const buildings = {
+"GLA.A": "Albert College (A)",
+"GLA.C": "Henry Grattan Building (C)",
+"GLA.CA": "Henry Grattan Building Extension (CA)",
+"GLA.D": "BEA Orpen Building (D)",
+"GLA.H": "Nursing Building (H)",
+"GLA.L": "McNulty Building (L)",
+"GLA.N": "Marconi Building (N)",
+"GLA.Q": "DCU Business School (Q)",
+"GLA.QA": "Reception (QA)",
+"GLA.S": "Stokes Building (S)",
+"GLA.SA": "Stokes Building Annex (SA)",
+"GLA.T": "Larkin Theatre (T)",
+"GLA.X": "Lonsdale Building (X)",
+"AHC.C": "All Hollows' Chapel (C)",
+"AHC.OD": "O'Donnell House (OD)",
+"AHC.P": "Purcell House (P)",
+"AHC.S": "Senior House (S)",
+"SPC.A": "St Patrick's, Block A",
+"SPC.B": "St Patrick's, Block B",
+"SPC.C": "St Patrick's, Block C",
+"SPC.D": "St Patrick's, Block D",
+"SPC.E": "St Patrick's, Block E",
+"SPC.F": "St Patrick's, Block F",
+"SPC.G": "St Patrick's, Block G",
+"SPC.S": "St Patrick's Sports Hall (S)",
+};
+
+function $(sel) {
+    return document.querySelector(sel);
+}
+
+function cmp(a, b) {
+    if (a < b) {
+        return -1;
+    } else if (a > b) {
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
+function printTime(t) {
+    return t.getHours().toString().padStart(2, '0') + ':' + t.getMinutes().toString().padStart(2, '0');
+}
+
+function parseLocations(location) {
+    let locations = location.split(/ *, */);
+    let matching_rooms = [];
+    let fixed_rooms = [];
+    let odd_rooms = [];
+
+    // split each location into a bilding and a room number
+    // remember unmatching rooms in odd_rooms
+    for(const location of locations) {
+        const m = location.match(/^([A-Z]{3}\.[A-Z][A-FH-Z]?)(.*)$/);
+        if(m) {
+            let [ building, room ] = m.slice(1);
+
+            const n = room.match(/^G?([0-9]+)$/);
+            const key = n ? Number(n[1]) : 0;
+
+            matching_rooms.push({building: building, room: room, key: key});
+        } else {
+            odd_rooms.push(location);
+        }
+    }
+
+    // Are all the rooms in the same building?
+    let same_building = true;
+    for(let i = 1; i < matching_rooms.length; i++) {
+        if(matching_rooms[0].building != matching_rooms[i].building) {
+            same_building = false;
+            break;
+        }
+    }
+
+    // if so concatenate the location into one string
+    if(same_building && matching_rooms.length > 1) {
+        matching_rooms.sort((a, b) => {
+            return cmp(a.key, b.key);
+        });
+        
+        let { building, room: last_room } = matching_rooms.pop();
+        if(buildings[building])
+            building = buildings[building]
+
+        const rooms = [];
+        for(const { building: b, room: r } of matching_rooms) {
+            rooms.push(r);
+        }
+
+        fixed_rooms.push(building + ", Rooms " + rooms.join(', ') + " and " + last_room);
+    } else {
+        // other list each room separately
+        for(let { building, room } of matching_rooms) {
+            if(buildings[building])
+                building = buildings[building];
+
+            fixed_rooms.push(building + ", Room " + room);
+        }
+    }
+
+    // put back any un-matching rooms and sort
+    let all_rooms = [...fixed_rooms, ...odd_rooms];
+    all_rooms.sort();
+
+    return all_rooms;
+}
+
+function parseLocation(room) {
+    const m = room.match(/^([A-Z]{3}\.[A-Z][A-FH-Z]?)(.*)$/);
+    if(m) {
+        if(buildings[m[1]]) {
+            return buildings[m[1]] + ", Room " + m[2];
+        } else {
+            return m[1] + ", Room " + m[2];
+        }
+    } else {
+        return room;
+    }
+}
+
+function displayTimetable(events, monday) {
+    let html = '';
+
+    if(events.length == 0) {
+        html += "<tr class='time'><td><h3>Monday</h3></td><td><i>" + monday.toLocaleDateString('fr') + "</i></td></tr>\n";
+        html += `<tr><td colspan="2">No results found for this week</td></tr>\n`;
+    } else {
+        let day = -1;
+        let end_of_prev_event = -1;
+        for(const {name, lecturer, start, end, location} of events) {
+            const length = (end - start) / 3600000;
+
+            if(start.getDay() > day) {
+                day = start.getDay();
+                html += "<tr class='time'><td><h3>" + weekDays[day] + "</h3></td><td><i>" + start.toLocaleDateString('fr') + "</i></td></tr>\n";
+                end_of_prev_event = -1;
+            }
+
+            if(end_of_prev_event != -1) {
+                let h = (start - end_of_prev_event) / 3600000;
+
+                if(h > 0) {
+                    html += `<tr><td colspan="2">&lt; ${h} hour gap &gt;</td></tr>\n`;
+                } else if(h < 0) {
+                    html += `<tr><td colspan="2">&lt; ${-h} hour overlap &gt;</td></tr>\n`;
+                }
+            }
+
+            html += "<tr><td colspan='2'>"
+            html += "<h4>" + printTime(start) + "</h4>\n";
+
+            if(name)
+                html += `${name}<br>\n`;
+
+            if(lecturer)
+                html += `${lecturer}<br>\n`;
+
+            let places = parseLocations(location);
+            for(const place of places) {
+                html += place + "<br>\n";
+            }
+
+            if(length == 1) {
+                html += "1 hour\n";
+            } else {
+                html += `${length} hours\n`;
+            }
+            html += "</td></tr>\n";
+
+            end_of_prev_event = end;
+        }
+    }
+
+    $('#loading').style.display = "none";
+    $('#edit-timetable').style.display = "none";
+    $('#timetable').innerHTML = html;
+    $('#view-timetable').style.display = "";
+    enableFormElements();
+    localStorage.setItem("show_timetable", "yes");
+    viewing_timetable = true;
+
+    const last_updated = new Date();
+    $('#updated').innerHTML = current_timetable_name + "<br>" +
+        "Loaded on " + last_updated.toLocaleDateString('fr')
+        + " @ " + last_updated.toLocaleTimeString('fr');
+}
+
+function editTimetable() {
+    viewing_timetable  = false;
+    localStorage.removeItem("show_timetable");
+    $('#view-timetable').style.display = "none";
+    $('#loading').style.display = "none";
+    $('#edit-timetable').style.display = "";
+
+    enableFormElements();
+}
+
+function getMonday() {
+    // current time and date
+    const now = new Date();
+
+    // create a "UTC" date object based on local date at midnight
+    const moment = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+
+    // get week day value with week starting on monday
+    let weekday = moment.getUTCDay() - 1;
+    if(weekday == -1) weekday = 6;
+
+    // got back to monday
+    let date = moment.getUTCDate() - weekday; // back to monday
+
+    // peek ahead on weekends
+    if(weekday > end_day)
+        date += 7; // go to next week
+
+    // apply week offset
+    date += week_offset * 7;
+
+    moment.setUTCDate(date);
+
+    current_week = moment;
+}
+
+async function fetchTimetable() {
+    const loading = $("#loading");
+    loading.style.display = "";
+    disableFormElements();
+
+    getMonday();
+
+    let week_start = new Date(current_week);
+    let week_end = new Date(current_week);
+    week_end.setUTCDate(week_end.getUTCDate() + 7);
+
+    let week_start_ts = week_start.toISOString();
+    let week_end_ts = week_end.toISOString();
+
+    const url = 'https://scientia-eu-v4-api-d1-03.azurewebsites.net/api/Public/CategoryTypes/Categories/Events/Filter/a1fdee6b-68eb-47b8-b2ac-a4c60c8e6177?startRange=' + week_start_ts + '&endRange=' + week_end_ts;
+
+    let query = {};
+    for(const search_item of selected_items) {
+        if(query[search_item.type]) {
+            query[search_item.type].CategoryIdentities.push(search_item.code);
+        } else {
+            query[search_item.type] = {
+                 CategoryIdentities: [search_item.code],
+                 CategoryTypeIdentity: SEARCH_TYPES[search_item.type],
+            };
+        }
+    }
+
+    if(Object.values(query).length == 0) {
+        editTimetable();
+        return;
+    }
+
+    const body = {
+       "CategoryTypesWithIdentities" : Object.values(query),
+       "FetchBookings" : false,
+       "FetchPersonalEvents" : false,
+       "PersonalIdentities" : [],
+       "ViewOptions" : {
+          "DatePeriods" : [
+             {
+                "Description" : "This Week",
+                "EndDateTime" : week_end_ts,
+                "IsDefault" : true,
+                "StartDateTime" : week_start_ts,
+                "Type" : null,
+                "Weeks" : [
+                   {
+                      "FirstDayInWeek" : week_start_ts,
+                      "HasCustomLabel" : false,
+                      "WeekLabel" : "1",
+                      "WeekNumber" : 1
+                   }
+                ]
+             }
+          ],
+          "Days" : [
+             {
+                "DayOfWeek" : 1,
+                "IsDefault" : true,
+                "Name" : "Monday"
+             },
+             {
+                "DayOfWeek" : 2,
+                "IsDefault" : true,
+                "Name" : "Tuesday"
+             },
+             {
+                "DayOfWeek" : 3,
+                "IsDefault" : true,
+                "Name" : "Wednesday"
+             },
+             {
+                "DayOfWeek" : 4,
+                "IsDefault" : true,
+                "Name" : "Thursday"
+             },
+             {
+                "DayOfWeek" : 5,
+                "IsDefault" : true,
+                "Name" : "Friday"
+             }
+          ],
+          "TimePeriods" : [
+             {
+                "Description" : "All Day",
+                "EndTime" : "23:59",
+                "IsDefault" : true,
+                "StartTime" : "00:00"
+             }
+          ],
+          "Weeks" : []
+       }
+    };
+
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+            },
+            body: JSON.stringify(body),
+        });
+
+        const data = await res.json();
+
+        if(!data.CategoryEvents) throw "bad data";
+
+        let events = [];
+        for(const event_group of data.CategoryEvents) {
+            for(const event of event_group.Results) {
+                let this_event = {};
+
+                for(const d of event.ExtraProperties) {
+                    if(d.DisplayName == 'Module Name') {
+                        this_event.name = d.Value.replace(/ *(\[|\()[0-9](\]|\)) */, ' \&mdash; ');    
+                    }
+                    else if(d.DisplayName == 'Staff Member') {
+                        this_event.lecturer = d.Value;
+                    }
+                }
+
+                // cleanup name 
+                this_event.name = this_event.name.replace(/,([^ ])/g, ', $1');
+                this_event.name = this_event.name.replace(/ *\& /g, ' &amp; ');
+
+                this_event.start = new Date(event.StartDateTime);
+                this_event.end = new Date(event.EndDateTime);
+                this_event.location = event.Location;
+
+                events.push(this_event);
+            }
+        }
+
+        events.sort((a, b) => {
+            return a.start - b.start;
+        });
+
+        // save the timetable in history (deep copy)
+        history.unshift(JSON.parse(JSON.stringify(selected_items)));
+        rewriteHistoryList();
+
+        displayTimetable(events, week_start);
+    } catch(err) {
+        console.log(err);
+        editTimetable();
+    }
+}
+
+
+async function addSomething() {
+    let code = $('#enter-code').value.toUpperCase();
+    $('#enter-code').style.border = "";
+
+    if(code == "") {
+        return;
+    } else if(code.search(/^[0-9A-Z\.]{3,15}$/) == -1) {
+        $('#enter-code').style.border = "red solid 1px";
+        return;
+    }
+
+    const loading = $("#loading");
+    loading.style.display = "";
+    disableFormElements();
+
+    let type;
+    if(code.search(/^[A-Z]{3}\./) > -1)
+        type = 'l';
+    else if(code.search(/[0-9]{3}/) > -1)
+        type = 'm';
+    else
+        type = 'p';
+
+    const url = 'https://scientia-eu-v4-api-d1-03.azurewebsites.net/api/Public/CategoryTypes/' + SEARCH_TYPES[type] + '/Categories/FilterWithCache/a1fdee6b-68eb-47b8-b2ac-a4c60c8e6177?pageNumber=1&query=' + code;
+
+    let res;
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+            },
+            body: '[{"Identity":"string","Values":["string"]}]',
+        });
+
+        res = await response.json();
+
+        if(res.Results?.length != 1)
+        {
+            $('#enter-code').style.border = "red solid 1px";
+            loading.style.display = "none";
+            enableFormElements();
+            return;
+        }
+
+        let name;
+        let shortCode;
+        if(type == 'm') {
+            name = res.Results[0].Name;
+            name = name.replace(/ *(\[|\()[0-9](\]|\)) */, ' \&mdash; ');
+
+            shortCode = res.Results[0].Name;
+            shortCode = shortCode.replace(/ *(\[|\()[0-9](\]|\)).*$/, '');
+        } else if(type == 'p') {
+            let d = res.Results[0].Description
+            let n = res.Results[0].Name;
+
+            // remove programme code from beginning of description
+            let re = new RegExp('^' + n + ' *- *', 'i');
+            d = d.replace(re, '');
+
+            name = n + " &mdash; " + d;
+            shortCode = res.Results[0].Name;
+        } else {
+            name = parseLocation(res.Results[0].Name);
+            shortCode = res.Results[0].Name;
+        }
+
+        // cleanup names 
+        if(type != 'p') {
+            name = name.replace(/,([^ ])/g, ', $1');
+            name = name.replace(/ *\& /g, ' &amp; ');
+        }
+
+        // insertion sort
+        let i = 0
+        for(; i < selected_items.length; i++) {
+            if(name < selected_items[i].name) {
+                break;
+            }
+        }
+        selected_items.splice(i, 0, {
+            shortCode: shortCode,
+            name: name,
+            code: res.Results[0].Identity,
+            type: type,
+        });
+
+        $('#enter-code').value = "";
+        rewriteSearchList();
+    } catch (err) {
+        console.log(err);
+    } finally {
+        loading.style.display = "none";
+        enableFormElements();
+    }
+}
+
+function rewriteSearchList(save = true) {
+    let search_list = $('#search-list');
+    search_list.innerHTML = '';
+
+    let dup_check = new Set();
+    for(let i = 0; i < selected_items.length; i++) {
+        if(dup_check.has(selected_items[i].code)) {
+            selected_items.splice(i, 1);
+            i--;
+        } else {
+            let row = document.createElement('tr');
+            row.innerHTML = '<td>' + selected_items[i].name + '</td><td><button class="square-button" onclick="removeSearchItem(' + i + ');" disabled>X</button></td>';
+            search_list.appendChild(row);
+            dup_check.add(selected_items[i].code);
+        }
+    }
+
+    $('#search-list-box').style.display = selected_items.length == 0 ? "none" : "";
+
+    if(save) {
+        if(selected_items.length == 0) {
+            localStorage.removeItem("selected_items");
+        } else {
+            localStorage.setItem("selected_items", JSON.stringify(selected_items));
+        }
+    }
+}
+
+function rewriteHistoryList(save = true) {
+    $('#history-list').innerHTML = '';
+
+    if(history.length == 0) {
+        $('#history-list-box').style.display = "none";
+        if(save)
+            localStorage.removeItem("history");
+        return;
+    }
+    $('#history-list-box').style.display = "";
+
+    const dup_check = new Set();
+    const table = $('#history-list');
+    current_timetable_name = "";
+    for(let i = 0; i < history.length && i < 5; i++) {
+        let link;
+        if(history[i].length == 1) {
+            link = history[i][0].name;
+        } else if(history[i].length > 1) {
+            let shortCodes = history[i].map(e => e.shortCode);
+            shortCodes.sort((a, b) => {
+                return cmp(a.sortCode, b.sortCode);
+            });
+            let last_code = shortCodes.pop();
+            link = shortCodes.join(', ') + ", and " + last_code;
+        }
+
+        if(dup_check.has(link)) {
+            history.splice(i, 1);
+            i--;
+        } else {
+            if(current_timetable_name == "") {
+                current_timetable_name = link;
+            }
+
+            table.innerHTML += "<tr><td><a href='javascript:loadHistoryItem(" + i + ")'>" + link + '</a></td><td><button class="square-button" onclick="removeHistoryItem(' + i + ');" disabled>X</button></td></tr>\n';
+            dup_check.add(link)
+        }
+    }
+    history.splice(5);
+    if(save)
+        localStorage.setItem("history", JSON.stringify(history));
+}
+
+function removeHistoryItem(k) {
+    history.splice(k, 1);
+    rewriteHistoryList();
+    enableFormElements();
+}
+
+function loadHistoryItem(num) {
+    // deep copy
+    selected_items = JSON.parse(JSON.stringify(history[num]));
+    rewriteSearchList();
+    week_offset = 0;
+    fetchTimetable();
+}
+
+
+function removeSearchItem(k) {
+    selected_items.splice(k, 1);
+    rewriteSearchList();
+    enableFormElements();
+}
+
+function enableFormElements() {
+    for(const ele of document.querySelectorAll('button,input')) {
+        ele.disabled = false;
+    }
+
+    for(const ele of document.querySelectorAll('a')) {
+        ele.classList.remove('disabled');
+    }
+}
+
+function disableFormElements() {
+    for(const ele of document.querySelectorAll('button,input')) {
+        ele.disabled = true;
+    }
+
+    for(const ele of document.querySelectorAll('a')) {
+        ele.classList.add('disabled');
+    }
+}
+
+
+function retrieveJsonStorage(name) {
+    try {
+        const data = localStorage.getItem(name);
+        if(data)
+            return JSON.parse(data);
+    } catch(err) {
+        // delete corrupt json
+        localStorage.removeItem(name);
+    }
+    return [];
+}
+
+function loadHandler() {
+    selected_items = retrieveJsonStorage("selected_items");
+    rewriteSearchList(false);
+
+    history = retrieveJsonStorage("history");
+    rewriteHistoryList(false);
+
+    // get selected week end day
+    // monday = 0, tuesday = 1, ..., sunday = 6
+    const ed = localStorage.getItem("end_day");
+    if(ed && !isNaN(Number(ed)))
+        end_day = Number(ed);
+    else
+        end_day = 4;
+    $('#weekend').selectedIndex = end_day - 2;
+
+    if(localStorage.getItem("show_timetable")) {
+        $('#view-timetable').style.display = "none";
+        $('#edit-timetable').style.display = "none";
+        week_offset = 0;
+        fetchTimetable();
+    } else {
+        editTimetable();
+    }
+}
+
+function setEndDay(day) {
+    let new_end_day = Number(day);
+
+    if(end_day != new_end_day) {
+        end_day = new_end_day;
+        localStorage.setItem("end_day", new_end_day);
+
+        let old_current_week = new Date(current_week);
+        getMonday();
+        if(old_current_week != current_week) {
+            fetchTimetable();
+        }
+    }
+}
+
+function curWeek() {
+    week_offset = 0;
+    fetchTimetable();
+}
+
+function prevWeek() {
+    week_offset--;
+    fetchTimetable();
+}
+
+function nextWeek() {
+    week_offset++;
+    fetchTimetable();
+}
+
+function catchSpaces(e)
+{
+    if(e.data == ' ') {
+        e.preventDefault();
+
+        if(e.target.value.length > 0) {
+            addSomething();
+        }
+    }
+}
+
+let startY;
+let startX;
+let endX;
+let endY;
+
+function touchstart(e) {
+    startY = e.touches[0].pageY;
+    startX = e.touches[0].pageX;
+}
+
+function touchmove(e) {
+    endY = e.touches[0].pageY;
+    endX = e.touches[0].pageX;
+}
+
+function touchend(e) {
+    if(!viewing_timetable) return;
+
+    let y = endY - startY;
+    let x = endX - startX;
+
+    if(Math.abs(y) > Math.abs(x)) {
+        if(document.scrollingElement.scrollTop == 0) {
+            let fraction = Math.abs(y) / document.documentElement.clientHeight;
+            if(fraction > 0.25) {
+                week_offset = 0;
+                fetchTimetable();
+            }
+        }
+    } else {
+        let fraction = Math.abs(x) / document.documentElement.clientWidth;
+        if(fraction > 0.5) {
+            if(x > 0)
+                week_offset--;
+            else
+                week_offset++;
+
+            fetchTimetable();
+        }
+    }
+}
+
+window.addEventListener('touchstart', touchstart, {passive: true});
+window.addEventListener('touchmove', touchmove, {passive: true});
+window.addEventListener('touchend', touchend, {passive: true});
+
+</script>
+
+</head>
+<body onload="loadHandler();">
+
+<div id="loading">
+  <div class="spinner-border" role="status"></div>
+</div>
+
+<div id="edit-timetable" style="display: none;">
+    <h1>DCU Timetable</h1>
+
+    <div id="search-box">
+        <form onsubmit="addSomething(); return false;" style="display: inline;">
+            <label for="enter-code" style="display: block;">Enter a programme, module, or room code</label>
+            <div style="display: flex;">
+                <input type="text" id="enter-code" onbeforeinput="catchSpaces(event);" style="width: 100%; text-transform: uppercase;" disabled>
+                <input type="submit" value="Add" style="margin-left: 5px;" disabled>
+            </div>
+        </form>
+    </div>
+
+    <div id="search-list-box" class="box">
+        <h3>Selected Items</h3>
+        <table id="search-list"></table>
+        <br>
+        <button id="timetable-button" onclick="fetchTimetable();" disabled>View Timetable</button>
+    </div>
+
+    <div id="history-list-box" class="box">
+        <h3>Previous Searches</h3>
+        <table id="history-list"></table>
+    </div>
+
+    <div id="about-box" class="box">
+        <h3>About</h3>
+        <p>This is simple web app to view you timetable.</p>
+        <p>Unlike DCU&rsquo;s &ldquo;<a href="https://mytimetable.dcu.ie/">Open Timetable</a>&rdquo;, it remembers<sup>*</sup>
+        the timetable you enter, so you don&rsquo;t have to re-enter it every time you visit.</p>
+        <p>It also tries to decipher DCU&rsquo;s locations codes.</p>
+        <p>Please report any issues on <a href="https://github.com/mjfwalsh/mjfwalsh.github.io/issues">Github</a>.</p>
+        <p style="font-size: 0.8em; text-align: center;">(<sup>*</sup> Yes, it does use something quite like cookies.)</p>
+    </div>
+</div>
+
+<div id="view-timetable" style="display: none;">
+    <table id="heading">
+        <tr>
+            <td style="text-align: left;">
+                <button class="square-button" onclick="prevWeek();" disabled>&lt;</button>
+            </td>
+            <td style="text-align: center;">
+                <h1 style="display: inline;">DCU Timetable</h1>
+                <button class="square-button" onclick="curWeek();" disabled>&#x27F3;</button>
+            </td>
+            <td style="text-align: right;">
+                <button class="square-button" onclick="nextWeek();" disabled>&gt;</button>
+            </td>
+        </tr>
+        <tr>
+            <td colspan="3" id="updated"></td>
+        </tr>
+    </table>
+
+    <table id="timetable">
+    </table>
+
+    <div id="footer">
+        <button onclick="editTimetable();" disabled>Edit Timetable</button>
+
+        <select id="weekend" onchange="setEndDay(this.value)">
+            <option value="2">Week ends on Wednesday</option>
+            <option value="3">Week ends on Thursday</option>
+            <option value="4" selected>Week ends on Friday</option>
+        </select>
+    </div>
+</div>
+
+</body>
+</html>
