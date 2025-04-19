@@ -582,6 +582,18 @@ async function fetchTimetable() {
                     }
                 }
 
+                // get module code
+                const module_code = event.Name.replace(/\[.*$/, '');
+
+                // use the event description if there's no module name
+                if(!this_event.name) this_event.name = event.Description;
+
+                // include the module code if it's not already there
+                if(!this_event.name)
+                    this_event.name = module_code;
+                else if(!this_event.name.includes(module_code))
+                    this_event.name = module_code + ' \&mdash; ' + this_event.name;
+
                 // cleanup name 
                 this_event.name = this_event.name.replace(/,([^ ])/g, ', $1');
                 this_event.name = this_event.name.replace(/ *\& /g, ' &amp; ');
