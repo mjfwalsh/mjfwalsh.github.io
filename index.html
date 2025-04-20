@@ -224,7 +224,7 @@ const SEARCH_TYPES = {
 };
 
 let selected_items = [];
-let history = [];
+let search_history = [];
 let viewing_timetable = false;
 let week_offset = 0;
 let end_day = 4; // friday
@@ -281,22 +281,22 @@ function printTime(t) {
 }
 
 function parseLocations(location) {
-    let locations = location.split(/ *, */);
-    let matching_rooms = [];
-    let fixed_rooms = [];
-    let odd_rooms = [];
+    const locations = location.split(/ *, */);
+    const matching_rooms = [];
+    const fixed_rooms = [];
+    const odd_rooms = [];
 
     // split each location into a bilding and a room number
     // remember unmatching rooms in odd_rooms
     for(const location of locations) {
         const m = location.match(/^([A-Z]{3}\.[A-Z][A-FH-Z]?)(.*)$/);
         if(m) {
-            let [ building, room ] = m.slice(1);
+            const [ building, room ] = m.slice(1);
 
             const n = room.match(/^G?([0-9]+)$/);
             const key = n ? Number(n[1]) : 0;
 
-            matching_rooms.push({building: building, room: room, key: key});
+            matching_rooms.push({building, room, key});
         } else {
             odd_rooms.push(location);
         }
@@ -316,15 +316,12 @@ function parseLocations(location) {
         matching_rooms.sort((a, b) => {
             return cmp(a.key, b.key);
         });
-        
+
         let { building, room: last_room } = matching_rooms.pop();
         if(buildings[building])
-            building = buildings[building]
+            building = buildings[building];
 
-        const rooms = [];
-        for(const { building: b, room: r } of matching_rooms) {
-            rooms.push(r);
-        }
+        const rooms = matching_rooms.map(({room}) => room);
 
         fixed_rooms.push(building + ", Rooms " + rooms.join(', ') + " and " + last_room);
     } else {
@@ -338,7 +335,7 @@ function parseLocations(location) {
     }
 
     // put back any un-matching rooms and sort
-    let all_rooms = [...fixed_rooms, ...odd_rooms];
+    const all_rooms = [...fixed_rooms, ...odd_rooms];
     all_rooms.sort();
 
     return all_rooms;
@@ -376,7 +373,7 @@ function displayTimetable(events, monday) {
             }
 
             if(end_of_prev_event != -1) {
-                let h = (start - end_of_prev_event) / 3600000;
+                const h = (start - end_of_prev_event) / 3600000;
 
                 if(h > 0) {
                     html += `<tr><td colspan="2">&lt; ${h} hour gap &gt;</td></tr>\n`;
@@ -385,7 +382,7 @@ function displayTimetable(events, monday) {
                 }
             }
 
-            html += "<tr><td colspan='2'>"
+            html += "<tr><td colspan='2'>";
             html += "<h4>" + printTime(start) + "</h4>\n";
 
             if(name)
@@ -394,7 +391,7 @@ function displayTimetable(events, monday) {
             if(lecturer)
                 html += `${lecturer}<br>\n`;
 
-            let places = parseLocations(location);
+            const places = parseLocations(location);
             for(const place of places) {
                 html += place + "<br>\n";
             }
@@ -467,16 +464,16 @@ async function fetchTimetable() {
 
     getMonday();
 
-    let week_start = new Date(current_week);
-    let week_end = new Date(current_week);
+    const week_start = new Date(current_week);
+    const week_end = new Date(current_week);
     week_end.setUTCDate(week_end.getUTCDate() + 7);
 
-    let week_start_ts = week_start.toISOString();
-    let week_end_ts = week_end.toISOString();
+    const week_start_ts = week_start.toISOString();
+    const week_end_ts = week_end.toISOString();
 
     const url = 'https://scientia-eu-v4-api-d1-03.azurewebsites.net/api/Public/CategoryTypes/Categories/Events/Filter/a1fdee6b-68eb-47b8-b2ac-a4c60c8e6177?startRange=' + week_start_ts + '&endRange=' + week_end_ts;
 
-    let query = {};
+    const query = {};
     for(const search_item of selected_items) {
         if(query[search_item.type]) {
             query[search_item.type].CategoryIdentities.push(search_item.code);
@@ -569,16 +566,15 @@ async function fetchTimetable() {
 
         if(!data.CategoryEvents) throw "bad data";
 
-        let events = [];
+        const events = [];
         for(const event_group of data.CategoryEvents) {
             for(const event of event_group.Results) {
-                let this_event = {};
+                const this_event = {};
 
                 for(const d of event.ExtraProperties) {
                     if(d.DisplayName == 'Module Name') {
-                        this_event.name = d.Value.replace(/ *(\[|\()[0-9](\]|\)) */, ' \&mdash; ');    
-                    }
-                    else if(d.DisplayName == 'Staff Member') {
+                        this_event.name = d.Value.replace(/ *(\[|\()[0-9](\]|\)) */, ' &mdash; ');
+                    } else if(d.DisplayName == 'Staff Member') {
                         this_event.lecturer = d.Value;
                     }
                 }
@@ -593,11 +589,11 @@ async function fetchTimetable() {
                 if(!this_event.name)
                     this_event.name = module_code;
                 else if(!this_event.name.includes(module_code))
-                    this_event.name = module_code + ' \&mdash; ' + this_event.name;
+                    this_event.name = module_code + ' &mdash; ' + this_event.name;
 
-                // cleanup name 
+                // cleanup name
                 this_event.name = this_event.name.replace(/,([^ ])/g, ', $1');
-                this_event.name = this_event.name.replace(/ *\& /g, ' &amp; ');
+                this_event.name = this_event.name.replace(/ *& /g, ' &amp; ');
 
                 this_event.start = new Date(event.StartDateTime);
                 this_event.end = new Date(event.EndDateTime);
@@ -612,7 +608,7 @@ async function fetchTimetable() {
         });
 
         // save the timetable in history (deep copy)
-        history.unshift(JSON.parse(JSON.stringify(selected_items)));
+        search_history.unshift(JSON.parse(JSON.stringify(selected_items)));
         rewriteHistoryList();
 
         displayTimetable(events, week_start);
@@ -624,12 +620,12 @@ async function fetchTimetable() {
 
 
 async function addSomething() {
-    let code = $('#enter-code').value.toUpperCase();
+    const code = $('#enter-code').value.toUpperCase();
     $('#enter-code').style.border = "";
 
     if(code == "") {
         return;
-    } else if(code.search(/^[0-9A-Z\.]{3,15}$/) == -1) {
+    } else if(!/^[0-9A-Z.]{3,15}$/.test(code)) {
         $('#enter-code').style.border = "red solid 1px";
         return;
     }
@@ -639,9 +635,9 @@ async function addSomething() {
     disableFormElements();
 
     let type;
-    if(code.search(/^[A-Z]{3}\./) > -1)
+    if(/^[A-Z]{3}\./.test(code))
         type = 'l';
-    else if(code.search(/[0-9]{3}/) > -1)
+    else if(/[0-9]{3}/.test(code))
         type = 'm';
     else
         type = 'p';
@@ -661,8 +657,7 @@ async function addSomething() {
 
         res = await response.json();
 
-        if(res.Results?.length != 1)
-        {
+        if(res.Results?.length != 1) {
             $('#enter-code').style.border = "red solid 1px";
             loading.style.display = "none";
             enableFormElements();
@@ -673,16 +668,16 @@ async function addSomething() {
         let shortCode;
         if(type == 'm') {
             name = res.Results[0].Name;
-            name = name.replace(/ *(\[|\()[0-9](\]|\)) */, ' \&mdash; ');
+            name = name.replace(/ *(\[|\()[0-9](\]|\)) */, ' &mdash; ');
 
             shortCode = res.Results[0].Name;
             shortCode = shortCode.replace(/ *(\[|\()[0-9](\]|\)).*$/, '');
         } else if(type == 'p') {
-            let d = res.Results[0].Description
-            let n = res.Results[0].Name;
+            let d = res.Results[0].Description;
+            const n = res.Results[0].Name;
 
             // remove programme code from beginning of description
-            let re = new RegExp('^' + n + ' *- *', 'i');
+            const re = new RegExp('^' + n + ' *- *', 'i');
             d = d.replace(re, '');
 
             name = n + " &mdash; " + d;
@@ -692,14 +687,14 @@ async function addSomething() {
             shortCode = res.Results[0].Name;
         }
 
-        // cleanup names 
+        // cleanup names
         if(type != 'p') {
             name = name.replace(/,([^ ])/g, ', $1');
-            name = name.replace(/ *\& /g, ' &amp; ');
+            name = name.replace(/ *& /g, ' &amp; ');
         }
 
         // insertion sort
-        let i = 0
+        let i = 0;
         for(; i < selected_items.length; i++) {
             if(name < selected_items[i].name) {
                 break;
@@ -723,16 +718,16 @@ async function addSomething() {
 }
 
 function rewriteSearchList(save = true) {
-    let search_list = $('#search-list');
+    const search_list = $('#search-list');
     search_list.innerHTML = '';
 
-    let dup_check = new Set();
+    const dup_check = new Set();
     for(let i = 0; i < selected_items.length; i++) {
         if(dup_check.has(selected_items[i].code)) {
             selected_items.splice(i, 1);
             i--;
         } else {
-            let row = document.createElement('tr');
+            const row = document.createElement('tr');
             row.innerHTML = '<td>' + selected_items[i].name + '</td><td><button class="square-button" onclick="removeSearchItem(' + i + ');" disabled>X</button></td>';
             search_list.appendChild(row);
             dup_check.add(selected_items[i].code);
@@ -753,7 +748,7 @@ function rewriteSearchList(save = true) {
 function rewriteHistoryList(save = true) {
     $('#history-list').innerHTML = '';
 
-    if(history.length == 0) {
+    if(search_history.length == 0) {
         $('#history-list-box').style.display = "none";
         if(save)
             localStorage.removeItem("history");
@@ -764,21 +759,21 @@ function rewriteHistoryList(save = true) {
     const dup_check = new Set();
     const table = $('#history-list');
     current_timetable_name = "";
-    for(let i = 0; i < history.length && i < 5; i++) {
+    for(let i = 0; i < search_history.length && i < 5; i++) {
         let link;
-        if(history[i].length == 1) {
-            link = history[i][0].name;
-        } else if(history[i].length > 1) {
-            let shortCodes = history[i].map(e => e.shortCode);
+        if(search_history[i].length == 1) {
+            link = search_history[i][0].name;
+        } else if(search_history[i].length > 1) {
+            const shortCodes = search_history[i].map(e => e.shortCode);
             shortCodes.sort((a, b) => {
                 return cmp(a.sortCode, b.sortCode);
             });
-            let last_code = shortCodes.pop();
+            const last_code = shortCodes.pop();
             link = shortCodes.join(', ') + ", and " + last_code;
         }
 
         if(dup_check.has(link)) {
-            history.splice(i, 1);
+            search_history.splice(i, 1);
             i--;
         } else {
             if(current_timetable_name == "") {
@@ -786,23 +781,23 @@ function rewriteHistoryList(save = true) {
             }
 
             table.innerHTML += "<tr><td><a href='javascript:loadHistoryItem(" + i + ")'>" + link + '</a></td><td><button class="square-button" onclick="removeHistoryItem(' + i + ');" disabled>X</button></td></tr>\n';
-            dup_check.add(link)
+            dup_check.add(link);
         }
     }
-    history.splice(5);
+    search_history.splice(5);
     if(save)
-        localStorage.setItem("history", JSON.stringify(history));
+        localStorage.setItem("history", JSON.stringify(search_history));
 }
 
 function removeHistoryItem(k) {
-    history.splice(k, 1);
+    search_history.splice(k, 1);
     rewriteHistoryList();
     enableFormElements();
 }
 
 function loadHistoryItem(num) {
     // deep copy
-    selected_items = JSON.parse(JSON.stringify(history[num]));
+    selected_items = JSON.parse(JSON.stringify(search_history[num]));
     rewriteSearchList();
     week_offset = 0;
     fetchTimetable();
@@ -841,7 +836,7 @@ function retrieveJsonStorage(name) {
         const data = localStorage.getItem(name);
         if(data)
             return JSON.parse(data);
-    } catch(err) {
+    } catch {
         // delete corrupt json
         localStorage.removeItem(name);
     }
@@ -852,7 +847,7 @@ function loadHandler() {
     selected_items = retrieveJsonStorage("selected_items");
     rewriteSearchList(false);
 
-    history = retrieveJsonStorage("history");
+    search_history = retrieveJsonStorage("history");
     rewriteHistoryList(false);
 
     // get selected week end day
@@ -875,13 +870,13 @@ function loadHandler() {
 }
 
 function setEndDay(day) {
-    let new_end_day = Number(day);
+    const new_end_day = Number(day);
 
     if(end_day != new_end_day) {
         end_day = new_end_day;
         localStorage.setItem("end_day", new_end_day);
 
-        let old_current_week = new Date(current_week);
+        const old_current_week = new Date(current_week);
         getMonday();
         if(old_current_week != current_week) {
             fetchTimetable();
@@ -904,8 +899,7 @@ function nextWeek() {
     fetchTimetable();
 }
 
-function catchSpaces(e)
-{
+function catchSpaces(e) {
     if(e.data == ' ') {
         e.preventDefault();
 
@@ -930,22 +924,22 @@ function touchmove(e) {
     endX = e.touches[0].pageX;
 }
 
-function touchend(e) {
+function touchend() {
     if(!viewing_timetable) return;
 
-    let y = endY - startY;
-    let x = endX - startX;
+    const y = endY - startY;
+    const x = endX - startX;
 
     if(Math.abs(y) > Math.abs(x)) {
         if(document.scrollingElement.scrollTop == 0) {
-            let fraction = Math.abs(y) / document.documentElement.clientHeight;
+            const fraction = Math.abs(y) / document.documentElement.clientHeight;
             if(fraction > 0.25) {
                 week_offset = 0;
                 fetchTimetable();
             }
         }
     } else {
-        let fraction = Math.abs(x) / document.documentElement.clientWidth;
+        const fraction = Math.abs(x) / document.documentElement.clientWidth;
         if(fraction > 0.5) {
             if(x > 0)
                 week_offset--;
