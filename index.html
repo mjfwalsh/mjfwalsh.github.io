@@ -457,6 +457,12 @@ function getMonday() {
     current_week = moment;
 }
 
+function clearTimetable() {
+    selected_items = [];
+    rewriteSearchList();
+    enableFormElements();
+}
+
 async function fetchTimetable() {
     const loading = $("#loading");
     loading.style.display = "";
@@ -657,55 +663,57 @@ async function addSomething() {
 
         res = await response.json();
 
-        if(res.Results?.length != 1) {
+        if(!res.Results || res.Results.length == 0) {
             $('#enter-code').style.border = "red solid 1px";
             loading.style.display = "none";
             enableFormElements();
             return;
         }
 
-        let name;
-        let shortCode;
-        if(type == 'm') {
-            name = res.Results[0].Name;
-            name = name.replace(/ *(\[|\()[0-9](\]|\)) */, ' &mdash; ');
+        for(const result of res.Results) {
+            let name;
+            let shortCode;
+            if(type == 'm') {
+                name = result.Name;
+                name = name.replace(/ *(\[|\()[0-9](\]|\)) */, ' &mdash; ');
 
-            shortCode = res.Results[0].Name;
-            shortCode = shortCode.replace(/ *(\[|\()[0-9](\]|\)).*$/, '');
-        } else if(type == 'p') {
-            let d = res.Results[0].Description;
-            const n = res.Results[0].Name;
+                shortCode = result.Name;
+                shortCode = shortCode.replace(/ *(\[|\()[0-9](\]|\)).*$/, '');
+            } else if(type == 'p') {
+                let d = result.Description;
+                const n = result.Name;
 
-            // remove programme code from beginning of description
-            const re = new RegExp('^' + n + ' *- *', 'i');
-            d = d.replace(re, '');
+                // remove programme code from beginning of description
+                const re = new RegExp('^' + n + ' *- *', 'i');
+                d = d.replace(re, '');
 
-            name = n + " &mdash; " + d;
-            shortCode = res.Results[0].Name;
-        } else {
-            name = parseLocation(res.Results[0].Name);
-            shortCode = res.Results[0].Name;
-        }
-
-        // cleanup names
-        if(type != 'p') {
-            name = name.replace(/,([^ ])/g, ', $1');
-            name = name.replace(/ *& /g, ' &amp; ');
-        }
-
-        // insertion sort
-        let i = 0;
-        for(; i < selected_items.length; i++) {
-            if(name < selected_items[i].name) {
-                break;
+                name = n + " &mdash; " + d;
+                shortCode = result.Name;
+            } else {
+                name = parseLocation(result.Name);
+                shortCode = result.Name;
             }
+
+            // cleanup names
+            if(type != 'p') {
+                name = name.replace(/,([^ ])/g, ', $1');
+                name = name.replace(/ *& /g, ' &amp; ');
+            }
+
+            // insertion sort
+            let i = 0;
+            for(; i < selected_items.length; i++) {
+                if(name < selected_items[i].name) {
+                    break;
+                }
+            }
+            selected_items.splice(i, 0, {
+                shortCode: shortCode,
+                name: name,
+                code: result.Identity,
+                type: type,
+            });
         }
-        selected_items.splice(i, 0, {
-            shortCode: shortCode,
-            name: name,
-            code: res.Results[0].Identity,
-            type: type,
-        });
 
         $('#enter-code').value = "";
         rewriteSearchList();
@@ -787,6 +795,12 @@ function rewriteHistoryList(save = true) {
     search_history.splice(5);
     if(save)
         localStorage.setItem("history", JSON.stringify(search_history));
+}
+
+function clearHistory() {
+    search_history = [];
+    rewriteHistoryList();
+    enableFormElements();
 }
 
 function removeHistoryItem(k) {
@@ -981,12 +995,15 @@ window.addEventListener('touchend', touchend, {passive: true});
         <h3>Selected Items</h3>
         <table id="search-list"></table>
         <br>
-        <button id="timetable-button" onclick="fetchTimetable();" disabled>View Timetable</button>
+        <button onclick="clearTimetable();" disabled>Clear All</button>
+        <button onclick="fetchTimetable();" disabled>View Timetable</button>
     </div>
 
     <div id="history-list-box" class="box">
         <h3>Previous Searches</h3>
         <table id="history-list"></table>
+        <br>
+        <button onclick="clearHistory();" disabled>Clear All</button>
     </div>
 
     <div id="about-box" class="box">
